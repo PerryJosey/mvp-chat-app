@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# local Supabase config (contains project URL and anon key)
+supabase.config.local.ts
+
 # typescript
 *.tsbuildinfo
 
