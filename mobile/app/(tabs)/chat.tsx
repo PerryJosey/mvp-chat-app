@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { ActivityIndicator, Button, StyleSheet, TextInput, View, Text, Alert } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Bubble, GiftedChat, IMessage, User } from 'react-native-gifted-chat';
 
 import { supabase } from '@/lib/supabaseClient';
@@ -24,10 +25,8 @@ type MessageRow = {
 const GENERAL_ROOM_NAME = 'General';
 
 export default function ChatScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [user, setUser] = useState<Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'] | null>(
     null
   );
@@ -228,56 +227,12 @@ export default function ChatScreen() {
     };
   };
 
-  const handleAuth = async () => {
-    setAuthLoading(true);
-    try {
-      const emailTrimmed = email.trim();
-      if (!emailTrimmed || !password) {
-        Alert.alert('Missing info', 'Please enter email and password');
-        return;
-      }
-
-      // Try sign in first
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: emailTrimmed,
-        password,
-      });
-
-      let authedUser = signInData.user;
-
-      if (signInError && signInError.message.includes('Invalid login credentials')) {
-        // Try sign up if sign in fails with invalid credentials
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: emailTrimmed,
-          password,
-        });
-        if (signUpError) {
-          throw signUpError;
-        }
-        authedUser = signUpData.user;
-      } else if (signInError) {
-        throw signInError;
-      }
-
-      if (!authedUser) {
-        Alert.alert('Auth error', 'No user returned from Supabase');
-        return;
-      }
-
-      setUser(authedUser);
-      await ensureProfile(authedUser.id, authedUser.email ?? undefined);
-      const room = await getOrCreateGeneralRoom(authedUser.id);
-      setRoomId(room.id);
-      await loadMessages(room.id);
-      subscribeToMessages(room.id);
-    } catch (error: any) {
-      console.error('Auth error', error);
-      Alert.alert('Auth error', error.message ?? 'Something went wrong');
-    } finally {
-      setAuthLoading(false);
-      setLoading(false);
+  // Redirect unauthenticated users to the Auth screen once loading is complete
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/auth');
     }
-  };
+  }, [loading, user, router]);
 
   const handleSend = useCallback(
     async (newMessages: IMessage[] = []) => {
@@ -328,24 +283,8 @@ export default function ChatScreen() {
 
   if (!user) {
     return (
-      <View style={styles.authContainer}>
-        <Text style={styles.authTitle}>Sign in to chat</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-        <Button title={authLoading ? 'Signing in...' : 'Sign in / Sign up'} onPress={handleAuth} disabled={authLoading} />
+      <View style={styles.centered}>
+        <ActivityIndicator />
       </View>
     );
   }
@@ -390,23 +329,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  authContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  authTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
   },
 });

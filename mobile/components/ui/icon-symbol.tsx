@@ -19,6 +19,7 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'bubble.left.and.bubble.right.fill': 'chat',
+  'person.crop.circle': 'person',
 } as IconMapping;
 
 /**
