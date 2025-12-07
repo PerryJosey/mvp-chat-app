@@ -10,6 +10,17 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const ensureProfile = async (userId: string, email?: string | null) => {
+    const username = email ?? `user-${userId.slice(0, 8)}`;
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ id: userId, username }, { onConflict: 'id' });
+
+    if (error) {
+      console.error('Error upserting profile from auth', error);
+    }
+  };
+
   const handleAuth = async () => {
     setLoading(true);
     try {
@@ -26,7 +37,8 @@ export default function AuthScreen() {
       });
 
       if (!signInError && signInData.user) {
-        // Existing confirmed user: go to chat
+        // Existing confirmed user: ensure profile then go to chat
+        await ensureProfile(signInData.user.id, signInData.user.email);
         router.replace('/(tabs)/chat');
         return;
       }
@@ -58,7 +70,8 @@ export default function AuthScreen() {
         return;
       }
 
-      // If email confirmation disabled, treat as logged-in and go to chat
+      // If email confirmation disabled, treat as logged-in: ensure profile and go to chat
+      await ensureProfile(signUpData.user.id, signUpData.user.email);
       router.replace('/(tabs)/chat');
     } catch (error: any) {
       console.error('Auth error', error);
