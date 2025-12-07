@@ -77,7 +77,8 @@ export default function UsersScreen() {
       const { error: insertError } = await supabase
         .from('room_members')
         .insert({ room_id: roomId, user_id: userId, role: 'member' });
-      if (insertError) {
+      if (insertError && insertError.code !== '23505') {
+        // 23505 = duplicate key, which is safe to ignore here
         console.error('Error inserting room_member', insertError);
       }
     }
