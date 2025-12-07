@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Bubble, GiftedChat, IMessage, User } from 'react-native-gifted-chat';
 
 import { supabase } from '@/lib/supabaseClient';
@@ -26,6 +26,7 @@ const GENERAL_ROOM_NAME = 'General';
 
 export default function ChatScreen() {
   const router = useRouter();
+  const { roomId: roomIdParam } = useLocalSearchParams<{ roomId?: string }>();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'] | null>(
     null
@@ -48,10 +49,16 @@ export default function ChatScreen() {
         }
         setUser(user);
         await ensureProfile(user.id, user.email ?? undefined);
-        const room = await getOrCreateGeneralRoom(user.id);
-        setRoomId(room.id);
-        await loadMessages(room.id);
-        subscribeToMessages(room.id);
+        if (roomIdParam && typeof roomIdParam === 'string') {
+          setRoomId(roomIdParam);
+          await loadMessages(roomIdParam);
+          subscribeToMessages(roomIdParam);
+        } else {
+          const room = await getOrCreateGeneralRoom(user.id);
+          setRoomId(room.id);
+          await loadMessages(room.id);
+          subscribeToMessages(room.id);
+        }
       } catch (error) {
         console.error('Error initializing chat', error);
       } finally {
@@ -66,7 +73,7 @@ export default function ChatScreen() {
       supabase.removeAllChannels();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [roomIdParam]);
 
   const ensureProfile = async (userId: string, email?: string) => {
     const username = email ?? `user-${userId.slice(0, 8)}`;
@@ -242,26 +249,27 @@ export default function ChatScreen() {
       const text = message?.text;
       if (!text) return;
 
-      const { data, error } = await supabase
-        .from('messages')
-        .insert({
-          room_id: roomId,
-          user_id: user.id,
-          body: text,
-        })
-        .select('id, body, created_at, user_id')
-        .single();
+      const { data, error } = await supabase.functions.invoke('moderate-message', {
+        body: { roomId, userId: user.id, text },
+      });
 
       if (error) {
-        console.error('Error sending message', error);
+        console.error('Error sending moderated message', error);
         return;
       }
 
+      if (!data || (typeof data === 'object' && 'allowed' in data && !data.allowed)) {
+        console.warn('Message blocked by moderation', data);
+        return;
+      }
+
+      const saved = (data as any).message ?? data;
+
       // Optimistically append the sent message for this client
       const optimistic: IMessage = {
-        _id: data.id,
-        text: data.body,
-        createdAt: data.created_at ? new Date(data.created_at) : new Date(),
+        _id: saved.id,
+        text: saved.body,
+        createdAt: saved.created_at ? new Date(saved.created_at) : new Date(),
         user: {
           _id: user.id,
           name: profile?.username ?? user.email ?? 'You',
